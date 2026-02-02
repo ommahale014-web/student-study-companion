@@ -1,21 +1,57 @@
 "use client";
 
 import { useState } from "react";
-import { login, signup } from "./action";
+import { supabase } from "@/lib/client";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  async function handleSignup() {
-    const result = await signup(email, password);
-    alert(result.message);
+  async function handleLogin() {
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    // ✅ browser session exists immediately
+    window.location.replace("/dashboard");
   }
 
-  async function handleLogin() {
-    const result = await login(email, password);
-    alert(result.message);
+  async function handleSignup() {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Signup successful. Check your email.");
   }
+
+
+useEffect(() => {
+  async function redirectIfLoggedIn() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      window.location.replace("/dashboard");
+    }
+  }
+
+  redirectIfLoggedIn();
+}, []);
+
+
 
   return (
     <main className="min-h-screen flex items-center justify-center">
