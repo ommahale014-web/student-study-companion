@@ -6,27 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Plus, StickyNote, Clock, Sparkles } from "lucide-react";
+import { Plus, Trash2, Edit3, Save } from "lucide-react";
 
 export default function StudyNotes() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [notes, setNotes] = useState([]);
+  const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
 
   async function loadNotes() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("notes")
       .select("*")
       .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error(error);
-      return;
-    }
 
     setNotes(data ?? []);
   }
@@ -35,125 +31,141 @@ export default function StudyNotes() {
     loadNotes();
   }, []);
 
-  async function handleAddNote() {
+  async function addNote() {
     if (!content.trim()) return;
     setLoading(true);
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      alert("Not logged in");
-      setLoading(false);
-      return;
-    }
+    if (!user) return setLoading(false);
 
-    const { error } = await supabase.from("notes").insert({
+    await supabase.from("notes").insert({
       user_id: user.id,
-      title: title.trim() || null,
+      title: title || null,
       content,
     });
 
-    if (error) {
-      alert(error.message);
-      setLoading(false);
-      return;
-    }
-
     setTitle("");
     setContent("");
-    await loadNotes();
     setLoading(false);
+    loadNotes();
+  }
+
+  async function updateNote(id, newTitle, newContent) {
+    await supabase
+      .from("notes")
+      .update({ title: newTitle || null, content: newContent })
+      .eq("id", id);
+
+    setEditingId(null);
+    loadNotes();
+  }
+
+  async function deleteNote(id) {
+    await supabase.from("notes").delete().eq("id", id);
+    setNotes((prev) => prev.filter((n) => n.id !== id));
   }
 
   return (
     <div className="space-y-10">
-      {/* Input Section - Styled as a floating Glass Panel */}
-      <div className="relative group p-[1px] rounded-[2rem] bg-gradient-to-b from-slate-700/50 to-transparent shadow-2xl">
-        <div className="bg-[#0f172a]/90 backdrop-blur-xl p-8 rounded-[calc(2rem-1px)] space-y-5">
-          <div className="flex items-center gap-3 mb-2">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400/80">New Entry</span>
-          </div>
 
-          <Input
-            placeholder="Note Title (optional)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="bg-slate-900/50 border-slate-800 focus:border-emerald-500/50 focus:ring-emerald-500/10 text-slate-100 placeholder:text-slate-600 h-12 rounded-xl transition-all"
-          />
+      {/* ---------- Editor ---------- */}
+      <div className="rounded-3xl border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl p-6 space-y-4">
+        <Input
+          placeholder="Title (optional)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="h-11 rounded-xl bg-slate-950/60 border-slate-800"
+        />
 
-          <Textarea
-            placeholder="Type your study insights here..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="bg-slate-900/50 border-slate-800 focus:border-emerald-500/50 focus:ring-emerald-500/10 text-slate-200 placeholder:text-slate-600 min-h-[140px] rounded-xl resize-none leading-relaxed transition-all"
-          />
+        <Textarea
+          placeholder="Write your study notes here…"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="min-h-[140px] rounded-xl bg-slate-950/60 border-slate-800"
+        />
 
-          <Button 
-            onClick={handleAddNote} 
-            disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-900/20 transition-all active:scale-[0.98]"
-          >
-            {loading ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Syncing...</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Plus className="w-5 h-5" />
-                <span>Add to Knowledge Base</span>
-              </div>
-            )}
-          </Button>
-        </div>
+        <Button
+          onClick={addNote}
+          disabled={loading}
+          className="h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold shadow-lg shadow-emerald-900/20"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Add to Knowledge Base
+        </Button>
       </div>
 
-      {/* Notes Display Grid */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between px-2">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-slate-500" />
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Recent Notes</h3>
-          </div>
-          <span className="text-[10px] font-mono text-slate-600 bg-slate-800/50 px-2 py-0.5 rounded-md border border-slate-700/50">
-            {notes.length} Total
-          </span>
-        </div>
-
+      {/* ---------- Notes ---------- */}
+      <div className="space-y-4">
         {notes.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-800/50 rounded-[2rem] bg-slate-900/20">
-            <StickyNote className="w-12 h-12 text-slate-800 mb-4" />
-            <p className="text-slate-500 font-medium tracking-tight">Your digital brain is empty.</p>
+          <div className="py-20 text-center text-slate-500 text-sm">
+            Your knowledge base is empty.
           </div>
         ) : (
-          <div className="grid gap-4">
-            {notes.map((note) => (
-              <Card 
-                key={note.id} 
-                className="border-slate-800/60 bg-slate-900/40 hover:bg-slate-800/40 transition-all duration-300 rounded-[1.5rem] group overflow-hidden"
-              >
-                <CardContent className="p-6">
-                  {note.title && (
-                    <div className="flex items-start justify-between mb-3">
-                      <h4 className="font-bold text-slate-100 text-lg leading-tight group-hover:text-emerald-400 transition-colors">
+          notes.map((note) => (
+            <Card
+              key={note.id}
+              className="group rounded-2xl border border-slate-800/60 bg-slate-900/40 transition-all hover:border-slate-700"
+            >
+              <CardContent className="p-6 space-y-4">
+                {editingId === note.id ? (
+                  <>
+                    <Input
+                      defaultValue={note.title ?? ""}
+                      onChange={(e) => (note.title = e.target.value)}
+                      className="bg-slate-950/60 border-slate-800"
+                    />
+
+                    <Textarea
+                      defaultValue={note.content}
+                      onChange={(e) => (note.content = e.target.value)}
+                      className="bg-slate-950/60 border-slate-800"
+                    />
+
+                    <Button
+                      onClick={() =>
+                        updateNote(note.id, note.title, note.content)
+                      }
+                      className="h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-semibold"
+                    >
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Changes
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {note.title && (
+                      <h4 className="text-lg font-bold text-slate-100">
                         {note.title}
                       </h4>
+                    )}
+
+                    <p className="text-sm text-slate-400 whitespace-pre-wrap leading-relaxed">
+                      {note.content}
+                    </p>
+
+                    {/* ---------- Actions (Subtle, on Hover) ---------- */}
+                    <div className="flex items-center gap-3 pt-2 opacity-0 group-hover:opacity-100 transition">
+                      <button
+                        onClick={() => setEditingId(note.id)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-indigo-400 transition"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                        Edit
+                      </button>
+
+                      <button
+                        onClick={() => deleteNote(note.id)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-rose-400 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </button>
                     </div>
-                  )}
-                  <p className="text-slate-400 text-sm leading-relaxed whitespace-pre-wrap selection:bg-emerald-500/20">
-                    {note.content}
-                  </p>
-                  
-                  <div className="mt-5 pt-4 border-t border-slate-800/50 flex items-center justify-between">
-                     <div className="w-2 h-2 rounded-full bg-emerald-500/30 group-hover:bg-emerald-500 transition-all duration-500" />
-                     <span className="text-[10px] font-medium text-slate-600 uppercase tracking-tighter">
-                       {new Date(note.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                     </span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          ))
         )}
       </div>
     </div>
